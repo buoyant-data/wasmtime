@@ -722,12 +722,24 @@ enum ValueData {
 /// Union      11     ty               first value     second value
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Hash)]
-#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "enable-serde", derive(Serialize))]
+#[allow(unaligned_references)]
 #[repr(Rust, packed)]
 struct ValueDataPacked {
     x: u32,
     y: u32,
     flags_and_type: u16,
+}
+
+// Manual Deserialize implementation for ValueDataPacked to avoid creating
+// references to fields of a packed struct (which is UB / E0793 in Rust >=1.86).
+#[cfg(feature = "enable-serde")]
+impl<'de> serde::Deserialize<'de> for ValueDataPacked {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Deserialize via a proxy tuple to avoid touching packed fields by reference.
+        let (x, y, flags_and_type) = <(u32, u32, u16) as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(ValueDataPacked { x, y, flags_and_type })
+    }
 }
 
 impl ValueDataPacked {
